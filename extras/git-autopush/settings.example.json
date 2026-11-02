@@ -1,0 +1,20 @@
+{
+  "env": {
+    "CODESYS_GIT_REPO": "C:\\path\\to\\your\\codesys-repo"
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "mcp__codesys-master__(create_.*|set_pou_code|edit_text_lines|delete_object|rename_.*|move_object|save_project.*|add_.*|remove_.*)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/codesys-git-autopush.js\"",
+            "timeout": 60,
+            "statusMessage": "Коммит и push на GitHub..."
+          }
+        ]
+      }
+    ]
+  }
+}

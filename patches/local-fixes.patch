@@ -1,0 +1,116 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 8a5078b..5de85c1 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -6,6 +6,8 @@ Until v0.19.0 the project was called Codesys-MCP-SP21+ (npm package `codesys-mcp
+ 
+ ## Unreleased
+ 
++- **A CODESYS detached by `shutdown_codesys` can be attached from another chat at once** (`src/launcher.ts`). The detach writes `terminate.signal` but leaves `owner.json`, and `sessionsByPid` counted that owner as long as its server ran, so while the old chat stayed open `attach_codesys` in a new one answered "No CODESYS opened by hand is running" (and, with `pid`, "is not a CODESYS opened by hand"). A terminated session now has no owner.
++- **The attach script moved to `%TEMP%\Codesys-MCP-Master\attach-codesys-mcp.py`** (`src/attach.ts`). Started by an MSIX-packaged client (the Claude desktop app), the server's writes to `%LOCALAPPDATA%` land in `Packages\<package>\LocalCache\Local`, which CODESYS does not see: the automatic attach failed at step 'open' with the Open dialog left on screen, and the path given for running it by hand did not exist for CODESYS. TEMP is not redirected. A desktop shortcut with `--runscript` needs the new path.
+ - **The version GVL keeps attribute pragmas on `sVersion` and `sDriveFile`** (`src/scripts/bump_project_version.py`). A bump, and the release step that prepares the next build, rewrite `_MCP_PROJECT_VERSION` from a template, which dropped pragmas such as `{attribute 'init_on_onlchange'}` placed directly above either variable. Those lines are now carried over; the rest of the template output is unchanged.
+ - **A timeout now measures silence, not run time** (`src/ipc.ts`). Every script gets a small `mcp_progress(stage)` function in front of it; each call restarts the wait for the result. A download through a tunnel spent 8 of its 10 minutes opening the project, building and logging in, and timed out during the transfer although the PLC finished on its own (2026-10-18). `download_to_device` now reports `project open`, `build`, `login and transfer` and `download`, and builds as a step of its own before login, so the full timeout covers the transfer. A timeout names the last stage reached.
+ - **`download_to_device` refuses a prepared copy with no change.** It looks at the last commit that touched the `.project`, so a Drive or Changelog commit after the preparation does not hide it. Right after a release the working copy carries the next number; downloading it unchanged put a number on the PLC that no release has (the code is the release's, the label is the next one). The reply says how to download the released build from the tag instead. `allowUnreleasedNumber: true` downloads it anyway.
+diff --git a/docs/tools.md b/docs/tools.md
+index e136cf2..b61f0c3 100644
+--- a/docs/tools.md
++++ b/docs/tools.md
+@@ -7,7 +7,7 @@
+ | Tool | Description |
+ |------|-------------|
+ | `launch_codesys` | Manually launch CODESYS (use with `--no-auto-launch`). When other CODESYS of the install run that cannot be taken over, a launch (also the automatic one on any tool call) first asks: it lists them (who runs them, open project, unsaved changes) and the agent asks the user, then calls `launch_codesys` with `otherInstances`: `leave` (start next to them, remembered for the session), `close` (normal window close; CODESYS asks about unsaved changes itself) or `save-and-close`. Another live session's CODESYS is always left alone |
+-| `attach_codesys` | **NEW** - take over a CODESYS the user opened by hand, e.g. to work in the project they have open. Writes the attach script (`%LOCALAPPDATA%\Codesys-MCP-Master\attach-codesys-mcp.py`), which installs the MCP watcher and returns; CODESYS stays usable. By default (`auto`, default true) the MCP runs it itself: it presses Tools > Scripting > Execute Script File... of that CODESYS through the Windows accessibility interface of its menu, chosen by PID (never the foreground window), puts the script path into the Open dialog with window messages and confirms it, without moving the mouse or typing; success is checked by the `[MCP]` title marker, then the session is taken over (about 3 s on SP18). With several CODESYS opened by hand it does not guess: it lists them and the agent asks the user, then calls again with `pid`. When the automation cannot run (a modal dialog open in that CODESYS, a menu that differs, not Windows) the reply names the step and why, and the user runs the script by hand: Tools > Scripting > Execute Script File... (`auto: false` skips the automation; `waitSeconds` is how long it then waits). The MCP never closes or kills an attached CODESYS: `shutdown_codesys` (and the server stopping with `--no-keep-alive`) only detach, and `killExisting` spares it; with the default keep-alive the attach watcher stays and the next session takes it over. `waitSeconds: 0` only writes the script and reports its path, no automation. A shortcut that starts CODESYS with `--runscript="%LOCALAPPDATA%\Codesys-MCP-Master\attach-codesys-mcp.py"` skips the menu step (the server rewrites the script on every start). An MCP-driven CODESYS shows `[MCP]` at the end of its window title |
++| `attach_codesys` | **NEW** - take over a CODESYS the user opened by hand, e.g. to work in the project they have open. Writes the attach script (`%TEMP%\Codesys-MCP-Master\attach-codesys-mcp.py`), which installs the MCP watcher and returns; CODESYS stays usable. By default (`auto`, default true) the MCP runs it itself: it presses Tools > Scripting > Execute Script File... of that CODESYS through the Windows accessibility interface of its menu, chosen by PID (never the foreground window), puts the script path into the Open dialog with window messages and confirms it, without moving the mouse or typing; success is checked by the `[MCP]` title marker, then the session is taken over (about 3 s on SP18). With several CODESYS opened by hand it does not guess: it lists them and the agent asks the user, then calls again with `pid`. When the automation cannot run (a modal dialog open in that CODESYS, a menu that differs, not Windows) the reply names the step and why, and the user runs the script by hand: Tools > Scripting > Execute Script File... (`auto: false` skips the automation; `waitSeconds` is how long it then waits). The MCP never closes or kills an attached CODESYS: `shutdown_codesys` (and the server stopping with `--no-keep-alive`) only detach, and `killExisting` spares it; with the default keep-alive the attach watcher stays and the next session takes it over. `waitSeconds: 0` only writes the script and reports its path, no automation. A shortcut that starts CODESYS with `--runscript="%TEMP%\Codesys-MCP-Master\attach-codesys-mcp.py"` skips the menu step (the server rewrites the script on every start). An MCP-driven CODESYS shows `[MCP]` at the end of its window title |
+ | `launch_codesys_with_project` | **NEW** - Launch a (potentially different) CODESYS install and open a project in it, detached from this MCP (no IPC, no watcher). For cross-version inspection or handing the user an IDE on another install. Asks first when other CODESYS of that install run (`otherInstances`, as for `launch_codesys`) |
+ | `shutdown_codesys` | Shut down the persistent CODESYS instance. Unsaved projects are never thrown away unasked: the call refuses and lists them; the agent asks the user and calls again with `unsavedChanges`: `save`, `discard` or `keep-open` (the server stopping with `--no-keep-alive` keeps it open). An attached one (`attach_codesys`) is only detached and stays open. Without a CODESYS of its own it kills orphans: CODESYS an ended MCP session started, never one opened by hand or used by another live session |
+ | `get_codesys_status` | Get current state, PID, execution mode |
+diff --git a/src/attach.ts b/src/attach.ts
+index a793ba4..cfa50cf 100644
+--- a/src/attach.ts
++++ b/src/attach.ts
+@@ -49,10 +49,17 @@ export function buildAttachScript(sessionFolderName: string): string {
+   return template.replace(line, replacement);
+ }
+ 
+-/** Where attach_codesys writes the script: a fixed path the user can pick in the file dialog. */
++/**
++ * Where attach_codesys writes the script: a fixed path the user can pick in the file dialog.
++ *
++ * Under TEMP, not LOCALAPPDATA: a server started by an MSIX-packaged client
++ * (the Claude desktop app) has its LOCALAPPDATA writes redirected into
++ * Packages\<package>\LocalCache\Local, which CODESYS does not see, so the
++ * automatic attach failed at step 'open' (2026-10-30..11-02). TEMP is not
++ * redirected; the session folders already live there.
++ */
+ export function defaultAttachScriptPath(): string {
+-  const base = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
+-  return path.join(base, 'Codesys-MCP-Master', 'attach-codesys-mcp.py');
++  return path.join(os.tmpdir(), 'Codesys-MCP-Master', 'attach-codesys-mcp.py');
+ }
+ 
+ export function writeAttachScript(sessionFolderName: string, target = defaultAttachScriptPath()): string {
+diff --git a/src/launcher.ts b/src/launcher.ts
+index 4d69fb2..06462dc 100644
+--- a/src/launcher.ts
++++ b/src/launcher.ts
+@@ -741,7 +741,8 @@ export class CodesysLauncher implements ScriptExecutor {
+         const live = !fs.existsSync(path.join(dir, 'terminate.signal'));
+         out.set(info.pid, {
+           attach: (prev?.attach ?? false) || name.startsWith(ATTACH_SESSION_PREFIX),
+-          foreignOwner: (prev?.foreignOwner ?? false) || this.liveForeignOwner(dir) !== null,
++          // A terminated session is used by no one, even while the server that detached still runs.
++          foreignOwner: (prev?.foreignOwner ?? false) || (live && this.liveForeignOwner(dir) !== null),
+           // A dir whose watcher may still answer (no terminate signal).
+           dir: live ? dir : prev?.dir,
+         });
+diff --git a/src/scripts/watcher.py b/src/scripts/watcher.py
+index 099363a..560082e 100644
+--- a/src/scripts/watcher.py
++++ b/src/scripts/watcher.py
+@@ -262,8 +262,8 @@ try:
+             script_path = command_data.get("scriptPath", "")
+             if not os.path.exists(script_path):
+                 raise IOError("Script file not found: %s" % script_path)
+-            with open(script_path, "r") as f:
+-                script_code = f.read()
++            with codecs.open(script_path, "r", "utf-8") as f:  # IronPython open() reads UTF-8 as Latin-1
++                script_code = f.read().replace("\r\n", "\n")
+         except Exception as read_err:
+             _log("Error reading command: %s" % read_err)
+             # The message embeds the script path, which can be non-ASCII;
+@@ -387,7 +387,7 @@ try:
+         try:
+             with open(os.path.join(COMMANDS_DIR, command_file), "r") as f:
+                 script_path = json.loads(f.read()).get("scriptPath", "")
+-            with open(script_path, "r") as f:
++            with codecs.open(script_path, "r", "utf-8") as f:  # IronPython open() reads UTF-8 as Latin-1
+                 code = f.read()
+                 return "create_online_application(" in code or "create_online_device(" in code
+         except Exception:
+diff --git a/tests/unit/attach-uia.test.ts b/tests/unit/attach-uia.test.ts
+index 640d86a..8823011 100644
+--- a/tests/unit/attach-uia.test.ts
++++ b/tests/unit/attach-uia.test.ts
+@@ -241,6 +241,8 @@ describe('CodesysLauncher.attachCandidates', () => {
+     session(b, 'attach-12-1', 12); // live attach session: attach() takes it
+     session(b, 'session-13', 13); // left by an ended MCP session
+     session(b, 'session-14', 14, { owner: process.ppid }); // another live MCP server
++    session(b, 'attach-16-1', 16, { terminated: true, owner: process.ppid }); // detached; that server still runs
++    session(b, 'attach-17-1', 17, { owner: process.ppid }); // attached in another live MCP server
+     const launcher = new CodesysLauncher(cfg, {
+       sessionBaseDir: b,
+       findRunning: () => [
+@@ -250,10 +252,12 @@ describe('CodesysLauncher.attachCandidates', () => {
+         { pid: 13, exePath: exe },
+         { pid: 14, exePath: exe },
+         { pid: 15, exePath: other }, // another install
++        { pid: 16, exePath: exe },
++        { pid: 17, exePath: exe },
+       ],
+       windowTitle: (pid) => `T${pid}`,
+     });
+-    expect(launcher.attachCandidates().map((c) => c.pid)).toEqual([10, 11]);
++    expect(launcher.attachCandidates().map((c) => c.pid)).toEqual([10, 11, 16]);
+     expect(launcher.titleOf(10)).toBe('T10');
+   });
+ });

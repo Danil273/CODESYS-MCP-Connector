@@ -1,0 +1,2 @@
+# Files are stored and checked out byte for byte, as tested (install.cmd needs CRLF, install.ps1 a BOM).
+* -text
